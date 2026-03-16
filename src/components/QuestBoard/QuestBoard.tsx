@@ -209,14 +209,22 @@ export function QuestBoard() {
   const filteredPinned = applyFilters(pinnedQuests);
   const filteredUnpinned = applyFilters(displayedUnpinned);
 
-  const handleDrop = async (targetIdx: number) => {
+  const handleDrop = async (e: React.DragEvent, targetIdx: number) => {
+    e.preventDefault();
     if (draggedQuestId === null) return;
-    const currentOrder = filteredUnpinned.map((q) => q.id);
-    const fromIdx = currentOrder.indexOf(draggedQuestId);
-    if (fromIdx === -1 || fromIdx === targetIdx) return;
-    currentOrder.splice(fromIdx, 1);
-    currentOrder.splice(targetIdx, 0, draggedQuestId);
-    await reorderQuests(currentOrder);
+    const targetQuest = filteredUnpinned[targetIdx];
+    if (!targetQuest || targetQuest.id === draggedQuestId) return;
+
+    const allIds = sortedUnpinned.map((q) => q.id);
+    const fromFullIdx = allIds.indexOf(draggedQuestId);
+    let toFullIdx = allIds.indexOf(targetQuest.id);
+    if (fromFullIdx === -1 || toFullIdx === -1) return;
+
+    allIds.splice(fromFullIdx, 1);
+    toFullIdx = allIds.indexOf(targetQuest.id);
+    allIds.splice(toFullIdx, 0, draggedQuestId);
+
+    await reorderQuests(allIds);
     setDraggedQuestId(null);
     setDragOverIdx(null);
   };
@@ -592,19 +600,27 @@ export function QuestBoard() {
                 <div
                   key={q.id}
                   draggable
-                  onDragStart={() => setDraggedQuestId(q.id)}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/plain", String(q.id));
+                    e.dataTransfer.effectAllowed = "move";
+                    setDraggedQuestId(q.id);
+                  }}
                   onDragEnd={() => {
                     setDraggedQuestId(null);
                     setDragOverIdx(null);
                   }}
                   onDragOver={(e) => {
                     e.preventDefault();
-                    setDragOverIdx(i);
+                    e.dataTransfer.dropEffect = "move";
+                    if (dragOverIdx !== i) setDragOverIdx(i);
                   }}
-                  onDrop={() => handleDrop(i)}
+                  onDragLeave={() => {
+                    if (dragOverIdx === i) setDragOverIdx(null);
+                  }}
+                  onDrop={(e) => handleDrop(e, i)}
                   className={cn(
-                    "card-stagger flex items-center gap-1 group/drag",
-                    draggedQuestId === q.id && "opacity-50",
+                    "card-stagger flex items-center gap-1 group/drag transition-all",
+                    draggedQuestId === q.id && "opacity-30 scale-[0.98]",
                     dragOverIdx === i && draggedQuestId !== q.id && "border-t-2 border-electric-blue"
                   )}
                   style={{ animationDelay: `${i * 0.04}s` }}

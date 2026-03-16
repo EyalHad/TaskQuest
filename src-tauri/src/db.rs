@@ -507,9 +507,11 @@ impl AppDatabase {
                    "habits","journal_entries","daily_challenges","quest_chains","quests","skills","user_stats","profiles"] {
             let _ = conn.execute_batch(&format!("DELETE FROM {};", t));
         }
+        let _ = conn.execute_batch("DELETE FROM sqlite_sequence;");
         conn.execute("PRAGMA foreign_keys=ON", [])?;
         conn.execute("INSERT INTO profiles (name, avatar_icon) VALUES ('Hero', '⚔️')", [])?;
-        conn.execute("INSERT INTO user_stats (profile_id) VALUES (1)", [])?;
+        let pid = conn.last_insert_rowid();
+        conn.execute("INSERT INTO user_stats (profile_id) VALUES (?1)", params![pid])?;
         Ok(())
     }
 
@@ -1607,7 +1609,7 @@ impl AppDatabase {
             let templates: Vec<(i64, String, String, String, Option<i64>, i64, String, String, bool, String)> = stmt_t.query_map(params![profile_id], |r| Ok((
                 r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?,r.get::<_,i32>(8)?!=0,r.get(9)?,
             )))?.collect::<Result<Vec<_>,_>>()?;
-            for (_, _, qname, desc, skill_id, xp, diff, pri, boss, pattern) in &templates {
+            for (_, _, qname, desc, skill_id, _xp, diff, pri, boss, pattern) in &templates {
                 let should_create = match pattern.as_str() {
                     "daily" => true,
                     "weekly" => weekday == "monday",
@@ -2247,6 +2249,7 @@ pub struct HabitRow {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct HabitEntryRow { pub id: i64, pub habit_id: i64, pub date: String }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -2282,4 +2285,374 @@ fn xp_for_level(level: u32) -> u64 { (100.0 * (level as f64).powf(1.5)).round() 
 fn days_between(from: &str, to: &str) -> i64 {
     let p = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
     match (p(from), p(to)) { (Some(a), Some(b)) => (b - a).num_days(), _ => -1 }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_db() -> AppDatabase {
+        let db = AppDatabase::new(":memory:").expect("Failed to create in-memory DB");
+        db.run_migrations().expect("Failed to run migrations");
+        db
+    }
+
+    fn default_profile_id() -> i64 { 1 }
+
+    fn get_any_leaf_skill(db: &AppDatabase, profile_id: i64) -> i64 {
+        let skills = db.get_all_skills(profile_id).unwrap();
+        skills.iter()
+            .find(|s| s.parent_skill_id.is_some() &&
+                !skills.iter().any(|o| o.parent_skill_id == Some(s.id)))
+            .map(|s| s.id)
+            .expect("No leaf skill found")
+    }
+
+    // ── Pure function tests ──────────────────────────────
+
+    #[test]
+    fn xp_for_level_monotonically_increases() {
+        for lvl in 1..50 {
+            assert!(xp_for_level(lvl + 1) > xp_for_level(lvl), "level {} >= level {}", lvl + 1, lvl);
+        }
+    }
+
+    #[test]
+    fn xp_for_level_1_is_100() {
+        assert_eq!(xp_for_level(1), 100);
+    }
+
+    #[test]
+    fn xp_for_level_follows_polynomial() {
+        assert_eq!(xp_for_level(4), (100.0 * 4.0_f64.powf(1.5)).round() as u64);
+        assert_eq!(xp_for_level(10), (100.0 * 10.0_f64.powf(1.5)).round() as u64);
+    }
+
+    #[test]
+    fn calculate_level_from_xp_level_1_at_zero() {
+        let (level, progress, needed) = calculate_level_from_xp(0);
+        assert_eq!(level, 1);
+        assert_eq!(progress, 0);
+        assert_eq!(needed, 100);
+    }
+
+    #[test]
+    fn calculate_level_from_xp_level_2_at_100() {
+        let (level, _progress, _needed) = calculate_level_from_xp(100);
+        assert_eq!(level, 2);
+    }
+
+    #[test]
+    fn calculate_level_from_xp_mid_level() {
+        let (level, progress, needed) = calculate_level_from_xp(50);
+        assert_eq!(level, 1);
+        assert_eq!(progress, 50);
+        assert_eq!(needed, 100);
+    }
+
+    #[test]
+    fn calculate_level_large_xp() {
+        let (level, _, _) = calculate_level_from_xp(100_000);
+        assert!(level > 10, "100k XP should be above level 10, got {}", level);
+    }
+
+    #[test]
+    fn base_xp_for_quest_types() {
+        assert_eq!(AppDatabase::base_xp_for_quest_type("daily"), 10);
+        assert_eq!(AppDatabase::base_xp_for_quest_type("weekly"), 25);
+        assert_eq!(AppDatabase::base_xp_for_quest_type("monthly"), 50);
+        assert_eq!(AppDatabase::base_xp_for_quest_type("unknown"), 10);
+    }
+
+    #[test]
+    fn difficulty_multipliers() {
+        assert_eq!(AppDatabase::difficulty_xp_mult("easy"), 1.0);
+        assert_eq!(AppDatabase::difficulty_xp_mult("normal"), 1.0);
+        assert_eq!(AppDatabase::difficulty_xp_mult("hard"), 1.5);
+        assert_eq!(AppDatabase::difficulty_xp_mult("epic"), 3.0);
+    }
+
+    #[test]
+    fn days_between_calculates_correctly() {
+        assert_eq!(days_between("2026-01-01", "2026-01-08"), 7);
+        assert_eq!(days_between("2026-03-01", "2026-03-01"), 0);
+        assert_eq!(days_between("invalid", "2026-01-01"), -1);
+    }
+
+    // ── Database tests ───────────────────────────────────
+
+    #[test]
+    fn migrations_create_default_profile() {
+        let db = setup_db();
+        let profiles = db.get_all_profiles().unwrap();
+        assert!(!profiles.is_empty(), "Default profile should be created");
+        assert_eq!(profiles[0].name, "Hero");
+    }
+
+    #[test]
+    fn migrations_seed_skills() {
+        let db = setup_db();
+        let skills = db.get_all_skills(default_profile_id()).unwrap();
+        assert!(!skills.is_empty(), "Skills should be seeded after migration");
+    }
+
+    #[test]
+    fn create_profile() {
+        let db = setup_db();
+        let profile = db.create_profile("TestHero", "🛡️").unwrap();
+        assert_eq!(profile.name, "TestHero");
+        assert_eq!(profile.avatar_icon, "🛡️");
+        let profiles = db.get_all_profiles().unwrap();
+        assert_eq!(profiles.len(), 2);
+    }
+
+    #[test]
+    fn create_and_get_skill() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let skill = db.create_skill(pid, "Cooking", "CRAFT", None, "🍳").unwrap();
+        assert_eq!(skill.name, "Cooking");
+        assert_eq!(skill.category, "CRAFT");
+        assert_eq!(skill.level, 1);
+        assert_eq!(skill.current_xp, 0);
+
+        let all = db.get_all_skills(pid).unwrap();
+        assert!(all.iter().any(|s| s.name == "Cooking"));
+    }
+
+    #[test]
+    fn create_quest_uses_base_xp() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let quest = db.create_quest(pid, "Test Daily", "", "daily", Some(sid), 999, None, false, None, "normal", "normal", false, None).unwrap();
+        assert_eq!(quest.xp_reward, 10, "Daily quest should always get 10 XP regardless of input");
+
+        let weekly = db.create_quest(pid, "Test Weekly", "", "weekly", Some(sid), 1, None, false, None, "normal", "normal", false, None).unwrap();
+        assert_eq!(weekly.xp_reward, 25);
+
+        let monthly = db.create_quest(pid, "Test Monthly", "", "monthly", Some(sid), 1, None, false, None, "normal", "normal", false, None).unwrap();
+        assert_eq!(monthly.xp_reward, 50);
+    }
+
+    #[test]
+    fn toggle_quest_completes_and_awards_xp() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let quest = db.create_quest(pid, "Grind", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+        assert!(!quest.completed);
+
+        let result = db.toggle_quest(pid, quest.id).unwrap();
+        assert!(result.stats.total_xp > 0, "XP should increase after completing quest");
+        assert_eq!(result.stats.quests_completed, 1);
+    }
+
+    #[test]
+    fn toggle_quest_uncomplete_reverses_xp() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let quest = db.create_quest(pid, "Reversible", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+
+        db.toggle_quest(pid, quest.id).unwrap();
+        let stats_after_complete = db.get_stats(pid).unwrap();
+        assert!(stats_after_complete.total_xp > 0);
+
+        db.toggle_quest(pid, quest.id).unwrap();
+        let stats_after_uncomplete = db.get_stats(pid).unwrap();
+        assert!(stats_after_uncomplete.total_xp < stats_after_complete.total_xp, "Uncompleting should reduce XP");
+    }
+
+    #[test]
+    fn hard_difficulty_gives_more_xp() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let normal_q = db.create_quest(pid, "Normal", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+        let result_normal = db.toggle_quest(pid, normal_q.id).unwrap();
+        let xp_normal = result_normal.stats.total_xp;
+
+        db.toggle_quest(pid, normal_q.id).unwrap();
+
+        let hard_q = db.create_quest(pid, "Hard", "", "daily", Some(sid), 10, None, false, None, "hard", "normal", false, None).unwrap();
+        let result_hard = db.toggle_quest(pid, hard_q.id).unwrap();
+        let xp_hard = result_hard.stats.total_xp;
+
+        assert!(xp_hard > xp_normal, "Hard quest ({}) should give more XP than normal ({})", xp_hard, xp_normal);
+    }
+
+    #[test]
+    fn reorder_quests_changes_sort_order() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let q1 = db.create_quest(pid, "First", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+        let q2 = db.create_quest(pid, "Second", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+        let q3 = db.create_quest(pid, "Third", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+
+        db.reorder_quests(&[q3.id, q1.id, q2.id]).unwrap();
+
+        let quests = db.get_all_quests(pid).unwrap();
+        let q3_order = quests.iter().find(|q| q.id == q3.id).unwrap().sort_order;
+        let q1_order = quests.iter().find(|q| q.id == q1.id).unwrap().sort_order;
+        let q2_order = quests.iter().find(|q| q.id == q2.id).unwrap().sort_order;
+
+        assert!(q3_order < q1_order, "q3 should come before q1");
+        assert!(q1_order < q2_order, "q1 should come before q2");
+    }
+
+    #[test]
+    fn has_existing_data_false_on_fresh_db() {
+        let db = setup_db();
+        assert!(!db.has_existing_data().unwrap(), "Fresh DB should not report existing data");
+    }
+
+    #[test]
+    fn has_existing_data_true_after_quest_completion() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let quest = db.create_quest(pid, "Real Work", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+        db.toggle_quest(pid, quest.id).unwrap();
+
+        assert!(db.has_existing_data().unwrap(), "Should detect data after quest completion");
+    }
+
+    #[test]
+    fn reset_all_data_clears_everything() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let quest = db.create_quest(pid, "To Delete", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+        db.toggle_quest(pid, quest.id).unwrap();
+        assert!(db.has_existing_data().unwrap());
+
+        db.reset_all_data().unwrap();
+        assert!(!db.has_existing_data().unwrap(), "After reset, should be clean");
+
+        let stats = db.get_stats(default_profile_id()).unwrap();
+        assert_eq!(stats.total_xp, 0);
+        assert_eq!(stats.quests_completed, 0);
+    }
+
+    #[test]
+    fn pin_quest_max_three() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let mut ids = vec![];
+        for i in 0..4 {
+            let q = db.create_quest(pid, &format!("Pin {}", i), "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+            ids.push(q.id);
+        }
+
+        db.toggle_pin_quest(pid, ids[0]).unwrap();
+        db.toggle_pin_quest(pid, ids[1]).unwrap();
+        db.toggle_pin_quest(pid, ids[2]).unwrap();
+
+        let result = db.toggle_pin_quest(pid, ids[3]);
+        assert!(result.is_err(), "Should not allow more than 3 pinned quests");
+    }
+
+    #[test]
+    fn archive_and_unarchive_quest() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let quest = db.create_quest(pid, "Archive Me", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+        db.archive_quest(quest.id).unwrap();
+
+        let active = db.get_all_quests(pid).unwrap();
+        assert!(!active.iter().any(|q| q.id == quest.id), "Archived quest should not appear in active list");
+
+        let archived = db.get_archived_quests(pid).unwrap();
+        assert!(archived.iter().any(|q| q.id == quest.id), "Should appear in archived list");
+
+        db.unarchive_quest(quest.id).unwrap();
+        let active2 = db.get_all_quests(pid).unwrap();
+        assert!(active2.iter().any(|q| q.id == quest.id), "Unarchived quest should appear again");
+    }
+
+    #[test]
+    fn delete_quest() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let quest = db.create_quest(pid, "Delete Me", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+        db.delete_quest(quest.id).unwrap();
+
+        let all = db.get_all_quests(pid).unwrap();
+        assert!(!all.iter().any(|q| q.id == quest.id));
+    }
+
+    #[test]
+    fn create_quest_no_skill() {
+        let db = setup_db();
+        let pid = default_profile_id();
+
+        let quest = db.create_quest(pid, "Scheduled Event", "", "daily", None, 10, None, false, None, "normal", "normal", false, None).unwrap();
+        assert_eq!(quest.skill_id, None);
+        assert_eq!(quest.xp_reward, 10);
+    }
+
+    #[test]
+    fn sub_tasks_crud() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let quest = db.create_quest(pid, "With Subs", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+        let sub = db.create_sub_task(quest.id, "Sub 1").unwrap();
+        assert_eq!(sub.title, "Sub 1");
+        assert!(!sub.completed);
+
+        let toggled = db.toggle_sub_task(pid, sub.id).unwrap();
+        assert!(toggled.completed > 0);
+
+        db.delete_sub_task(sub.id).unwrap();
+        let subs = db.get_sub_tasks(quest.id).unwrap();
+        assert!(subs.is_empty());
+    }
+
+    #[test]
+    fn tags_crud() {
+        let db = setup_db();
+        let pid = default_profile_id();
+        let sid = get_any_leaf_skill(&db, pid);
+
+        let quest = db.create_quest(pid, "Tagged", "", "daily", Some(sid), 10, None, false, None, "normal", "normal", false, None).unwrap();
+        db.add_tag_to_quest(quest.id, "urgent").unwrap();
+        db.add_tag_to_quest(quest.id, "coding").unwrap();
+
+        let tags = db.get_tags_for_quest(quest.id).unwrap();
+        assert_eq!(tags.len(), 2);
+
+        let all_tags = db.get_all_tags(pid).unwrap();
+        assert!(all_tags.len() >= 2);
+
+        db.remove_tag_from_quest(quest.id, tags[0].id).unwrap();
+        let tags_after = db.get_tags_for_quest(quest.id).unwrap();
+        assert_eq!(tags_after.len(), 1);
+    }
+
+    #[test]
+    fn get_stats_for_default_profile() {
+        let db = setup_db();
+        let stats = db.get_stats(default_profile_id()).unwrap();
+        assert_eq!(stats.total_xp, 0);
+        assert_eq!(stats.current_level, 1);
+        assert_eq!(stats.hp, 100);
+        assert_eq!(stats.max_hp, 100);
+    }
 }

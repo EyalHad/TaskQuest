@@ -12,6 +12,7 @@ import { buildTree } from "../lib/skill-tree";
 import { applyTheme } from "../lib/themes";
 import { checkAndNotify } from "../lib/notifications";
 import { setSoundPack, playSound } from "../lib/sounds";
+import { getMilestone } from "../lib/milestones";
 
 export type Page = "home" | "quests" | "hero" | "shop" | "stats" | "settings" | "catalog" | "calendar" | "habits" | "journal" | "equipment" | "achievements" | "review" | "chains" | "templates";
 
@@ -460,7 +461,6 @@ export const useStore = create<AppStore>((set, get) => ({
         get().dismissUndo();
       }
       if (result.newAchievements?.length) {
-        const { getMilestone } = await import("../lib/milestones");
         for (const key of result.newAchievements) {
           const m = getMilestone(key);
           if (m) set({ achievementPopup: m });
