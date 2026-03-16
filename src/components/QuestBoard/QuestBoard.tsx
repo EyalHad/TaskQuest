@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useStore } from "../../store";
 import { StatsBar } from "./StatsBar";
@@ -90,6 +90,7 @@ export function QuestBoard() {
   const [viewMode, setViewMode] = useState<"list" | "kanban">(() => (localStorage.getItem("questboard_view") as "list" | "kanban") || "list");
   const [draggedQuestId, setDraggedQuestId] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [description, setDescription] = useState("");
   const [showDescription, setShowDescription] = useState(false);
   const [questSuggestions, setQuestSuggestions] = useState<string[]>([]);
@@ -209,22 +210,47 @@ export function QuestBoard() {
   const filteredPinned = applyFilters(pinnedQuests);
   const filteredUnpinned = applyFilters(displayedUnpinned);
 
-  const handleDrop = async (e: React.DragEvent, targetIdx: number) => {
+  const getDropIndex = (clientY: number): number | null => {
+    if (!listRef.current) return null;
+    const children = Array.from(listRef.current.children) as HTMLElement[];
+    for (let i = 0; i < children.length; i++) {
+      const rect = children[i].getBoundingClientRect();
+      if (clientY < rect.top + rect.height / 2) return i;
+    }
+    return children.length > 0 ? children.length - 1 : null;
+  };
+
+  const handleGripDown = (e: React.PointerEvent, questId: number) => {
     e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setDraggedQuestId(questId);
+  };
+
+  const handleGripMove = (e: React.PointerEvent) => {
     if (draggedQuestId === null) return;
-    const targetQuest = filteredUnpinned[targetIdx];
-    if (!targetQuest || targetQuest.id === draggedQuestId) return;
+    const idx = getDropIndex(e.clientY);
+    if (idx !== null && idx !== dragOverIdx) setDragOverIdx(idx);
+  };
 
-    const allIds = sortedUnpinned.map((q) => q.id);
-    const fromFullIdx = allIds.indexOf(draggedQuestId);
-    let toFullIdx = allIds.indexOf(targetQuest.id);
-    if (fromFullIdx === -1 || toFullIdx === -1) return;
-
-    allIds.splice(fromFullIdx, 1);
-    toFullIdx = allIds.indexOf(targetQuest.id);
-    allIds.splice(toFullIdx, 0, draggedQuestId);
-
-    await reorderQuests(allIds);
+  const handleGripUp = async (e: React.PointerEvent) => {
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    if (draggedQuestId === null || dragOverIdx === null) {
+      setDraggedQuestId(null);
+      setDragOverIdx(null);
+      return;
+    }
+    const targetQuest = filteredUnpinned[dragOverIdx];
+    if (targetQuest && targetQuest.id !== draggedQuestId) {
+      const allIds = sortedUnpinned.map((q) => q.id);
+      const fromIdx = allIds.indexOf(draggedQuestId);
+      let toIdx = allIds.indexOf(targetQuest.id);
+      if (fromIdx !== -1 && toIdx !== -1) {
+        allIds.splice(fromIdx, 1);
+        toIdx = allIds.indexOf(targetQuest.id);
+        allIds.splice(toIdx, 0, draggedQuestId);
+        await reorderQuests(allIds);
+      }
+    }
     setDraggedQuestId(null);
     setDragOverIdx(null);
   };
@@ -595,40 +621,23 @@ export function QuestBoard() {
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div ref={listRef} className="space-y-2">
               {filteredUnpinned.map((q, i) => (
                 <div
                   key={q.id}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    if (dragOverIdx !== i) setDragOverIdx(i);
-                  }}
-                  onDragLeave={() => {
-                    if (dragOverIdx === i) setDragOverIdx(null);
-                  }}
-                  onDrop={(e) => handleDrop(e, i)}
                   className={cn(
                     "card-stagger flex items-center gap-1 transition-all",
                     draggedQuestId === q.id && "opacity-30 scale-[0.98]",
-                    dragOverIdx === i && draggedQuestId !== q.id && "border-t-2 border-electric-blue"
+                    dragOverIdx === i && draggedQuestId !== null && draggedQuestId !== q.id && "border-t-2 border-electric-blue"
                   )}
                   style={{ animationDelay: `${i * 0.04}s` }}
                 >
                   <div
-                    draggable
-                    onDragStart={(e) => {
-                      const row = e.currentTarget.parentElement;
-                      if (row) e.dataTransfer.setDragImage(row, 20, 20);
-                      e.dataTransfer.setData("text/plain", String(q.id));
-                      e.dataTransfer.effectAllowed = "move";
-                      setDraggedQuestId(q.id);
-                    }}
-                    onDragEnd={() => {
-                      setDraggedQuestId(null);
-                      setDragOverIdx(null);
-                    }}
-                    className="cursor-grab active:cursor-grabbing shrink-0 p-1 text-muted hover:text-secondary touch-none"
+                    onPointerDown={(e) => handleGripDown(e, q.id)}
+                    onPointerMove={handleGripMove}
+                    onPointerUp={handleGripUp}
+                    onLostPointerCapture={() => { setDraggedQuestId(null); setDragOverIdx(null); }}
+                    className="cursor-grab active:cursor-grabbing shrink-0 p-1 text-muted hover:text-secondary touch-none select-none"
                   >
                     <GripVertical className="w-4 h-4" />
                   </div>
