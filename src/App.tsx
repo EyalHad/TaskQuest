@@ -59,11 +59,9 @@ function App() {
     checkForExistingData();
   }, [checkForExistingData]);
 
-  if (hasExistingData && !dataCheckDone) {
-    return <DataRecoveryDialog onRestore={continueWithExistingData} onFresh={resetAllData} />;
-  }
-
   useEffect(() => {
+    if (hasExistingData && !dataCheckDone) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
@@ -134,6 +132,8 @@ function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
+    hasExistingData,
+    dataCheckDone,
     setPage,
     setQuickCapture,
     setShortcutHelp,
@@ -151,6 +151,10 @@ function App() {
     pausePomodoro,
     resumePomodoro,
   ]);
+
+  if (hasExistingData && !dataCheckDone) {
+    return <DataRecoveryDialog onRestore={continueWithExistingData} onFresh={resetAllData} />;
+  }
 
   if (page === "home") {
     return (

@@ -481,20 +481,22 @@ impl AppDatabase {
 
     pub fn has_existing_data(&self) -> Result<bool> {
         let conn = self.conn.lock().unwrap();
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM profiles WHERE id > 0", [], |r| r.get(0)
-        ).unwrap_or(0);
-        if count == 0 { return Ok(false); }
         let total_xp: i64 = conn.query_row(
             "SELECT COALESCE(SUM(total_xp), 0) FROM user_stats", [], |r| r.get(0)
         ).unwrap_or(0);
+        if total_xp > 0 { return Ok(true); }
+        let quests_completed: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(quests_completed), 0) FROM user_stats", [], |r| r.get(0)
+        ).unwrap_or(0);
+        if quests_completed > 0 { return Ok(true); }
         let quest_count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM quests", [], |r| r.get(0)
         ).unwrap_or(0);
-        let skill_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM skills", [], |r| r.get(0)
+        if quest_count > 0 { return Ok(true); }
+        let achievement_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM achievements", [], |r| r.get(0)
         ).unwrap_or(0);
-        Ok(total_xp > 0 || quest_count > 0 || skill_count > 0)
+        Ok(achievement_count > 0)
     }
 
     pub fn reset_all_data(&self) -> Result<()> {
