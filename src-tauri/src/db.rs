@@ -770,7 +770,7 @@ impl AppDatabase {
 
     pub fn get_skill_quest_counts(&self, profile_id: i64) -> Result<Vec<(i64, i64)>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT skill_id, COUNT(*) FROM quests WHERE profile_id=?1 AND completed=0 AND failed=0 AND is_archived=0 GROUP BY skill_id")?;
+        let mut stmt = conn.prepare("SELECT skill_id, COUNT(*) FROM quests WHERE profile_id=?1 AND completed=0 AND failed=0 AND is_archived=0 AND skill_id IS NOT NULL GROUP BY skill_id")?;
         let rows = stmt.query_map(params![profile_id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>,_>>()?;
         Ok(rows)
     }
@@ -1710,13 +1710,15 @@ impl AppDatabase {
 
         // Grant proportional XP when sub-task completed
         if cur == 0 && total > 0 {
-            let (xp_reward, skill_id): (i64, i64) = conn.query_row("SELECT xp_reward,skill_id FROM quests WHERE id=?1", params![quest_id], |r| Ok((r.get(0)?,r.get(1)?)))?;
+            let (xp_reward, skill_id): (i64, Option<i64>) = conn.query_row("SELECT xp_reward,skill_id FROM quests WHERE id=?1", params![quest_id], |r| Ok((r.get(0)?,r.get(1)?)))?;
             let partial_xp = xp_reward / total;
             if partial_xp > 0 {
-                conn.execute("UPDATE skills SET current_xp=MAX(0,current_xp+?1) WHERE id=?2", params![partial_xp,skill_id])?;
-                let skill_xp: i64 = conn.query_row("SELECT current_xp FROM skills WHERE id=?1", params![skill_id], |r| r.get(0))?;
-                let lvl = calculate_level_from_xp(skill_xp as u64).0 as i64;
-                conn.execute("UPDATE skills SET level=?1 WHERE id=?2", params![lvl,skill_id])?;
+                if let Some(sid) = skill_id {
+                    conn.execute("UPDATE skills SET current_xp=MAX(0,current_xp+?1) WHERE id=?2", params![partial_xp,sid])?;
+                    let skill_xp: i64 = conn.query_row("SELECT current_xp FROM skills WHERE id=?1", params![sid], |r| r.get(0))?;
+                    let lvl = calculate_level_from_xp(skill_xp as u64).0 as i64;
+                    conn.execute("UPDATE skills SET level=?1 WHERE id=?2", params![lvl,sid])?;
+                }
                 conn.execute("UPDATE user_stats SET total_xp=MAX(0,total_xp+?1) WHERE profile_id=?2", params![partial_xp,profile_id])?;
             }
         }
@@ -1874,16 +1876,18 @@ impl AppDatabase {
     pub fn complete_pomodoro(&self, profile_id: i64, quest_id: i64) -> Result<StatsRow> {
         let conn = self.conn.lock().unwrap();
         conn.execute("UPDATE quests SET pomodoro_count=pomodoro_count+1 WHERE id=?1 AND profile_id=?2", params![quest_id, profile_id])?;
-        let skill_id: i64 = conn.query_row("SELECT skill_id FROM quests WHERE id=?1 AND profile_id=?2", params![quest_id, profile_id], |r| r.get(0))?;
-        conn.execute("UPDATE skills SET current_xp=current_xp+5 WHERE id=?1", params![skill_id])?;
-        let skill_xp: i64 = conn.query_row("SELECT current_xp FROM skills WHERE id=?1", params![skill_id], |r| r.get(0))?;
-        let lvl = calculate_level_from_xp(skill_xp as u64).0 as i64;
-        conn.execute("UPDATE skills SET level=?1 WHERE id=?2", params![lvl,skill_id])?;
+        let skill_id: Option<i64> = conn.query_row("SELECT skill_id FROM quests WHERE id=?1 AND profile_id=?2", params![quest_id, profile_id], |r| r.get(0))?;
+        if let Some(sid) = skill_id {
+            conn.execute("UPDATE skills SET current_xp=current_xp+5 WHERE id=?1", params![sid])?;
+            let skill_xp: i64 = conn.query_row("SELECT current_xp FROM skills WHERE id=?1", params![sid], |r| r.get(0))?;
+            let lvl = calculate_level_from_xp(skill_xp as u64).0 as i64;
+            conn.execute("UPDATE skills SET level=?1 WHERE id=?2", params![lvl,sid])?;
+            conn.execute("INSERT INTO activity_log (profile_id,skill_id,event_type,detail,xp_delta) VALUES (?1,?2,'pomodoro','Pomodoro completed',5)", params![profile_id,sid])?;
+        }
         conn.execute("UPDATE user_stats SET total_xp=total_xp+5 WHERE profile_id=?1", params![profile_id])?;
         let total_xp: i64 = conn.query_row("SELECT total_xp FROM user_stats WHERE profile_id=?1", params![profile_id], |r| r.get(0))?;
         let gl = calculate_level_from_xp(total_xp as u64).0 as i64;
         conn.execute("UPDATE user_stats SET current_level=?1 WHERE profile_id=?2", params![gl,profile_id])?;
-        conn.execute("INSERT INTO activity_log (profile_id,skill_id,event_type,detail,xp_delta) VALUES (?1,?2,'pomodoro','Pomodoro completed',5)", params![profile_id,skill_id])?;
         Self::read_stats(&conn, profile_id)
     }
 
