@@ -1,0 +1,318 @@
+@import "tailwindcss";
+
+@theme {
+  --color-neon-purple: #B026FF;
+  --color-electric-blue: #00E5FF;
+  --color-emerald-glow: #00FF66;
+  --color-crimson: #FF3366;
+  --color-gold: #FFD700;
+  --color-surface: #0f172a;
+  --color-panel: #1e293b;
+  --color-card: #1e293b;
+  --color-card-hover: #273548;
+  --color-frame-bg: #080c14;
+  --color-frame-border: #1e293b;
+  --color-default: #334155;
+  --color-subtle: #1e293b;
+  --color-primary: #f1f5f9;
+  --color-secondary: #94a3b8;
+  --color-muted: #475569;
+  --color-inverse: #0f172a;
+  --color-scroll-thumb: #334155;
+  --color-scroll-thumb-hover: #475569;
+}
+
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    overflow: hidden;
+    background-color: var(--color-frame-bg);
+    color: var(--color-primary);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--color-scroll-thumb); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-scroll-thumb-hover); }
+}
+
+/* --- Generic animations --- */
+
+@keyframes animate-in {
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-in { animation: animate-in 0.15s ease-out; }
+
+@keyframes fade-out-right {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(30px); }
+}
+.animate-fade-out { animation: fade-out-right 0.3s ease-in forwards; }
+
+/* --- Glow helpers --- */
+
+.glow-blue { box-shadow: 0 0 10px rgba(0, 229, 255, 0.3); }
+.glow-purple { box-shadow: 0 0 10px rgba(176, 38, 255, 0.3); }
+.glow-green { box-shadow: 0 0 10px rgba(0, 255, 102, 0.3); }
+.glow-crimson { box-shadow: 0 0 10px rgba(255, 51, 102, 0.3); }
+
+/* --- Skill tree --- */
+
+.collapse-section {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease-out;
+}
+.collapse-section.expanded { grid-template-rows: 1fr; }
+.collapse-section > div { overflow: hidden; }
+
+@keyframes node-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.node-enter { animation: node-enter 0.25s ease-out both; }
+
+.xp-ring {
+  transform: rotate(-90deg);
+  transition: stroke-dashoffset 0.8s ease-out;
+}
+
+@keyframes detail-expand {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 500px; }
+}
+.detail-expand { animation: detail-expand 0.3s ease-out forwards; overflow: hidden; }
+
+.skill-tooltip {
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.skill-node-hover:hover .skill-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* --- Phase 4: XP Flyup --- */
+
+@keyframes xp-flyup {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-40px); }
+}
+.xp-flyup {
+  animation: xp-flyup 1s ease-out forwards;
+}
+
+/* --- Phase 4: Quest completion slide-out --- */
+
+@keyframes quest-complete-out {
+  0% { border-color: rgba(0, 255, 102, 0.5); box-shadow: 0 0 15px rgba(0, 255, 102, 0.2); }
+  30% { border-color: rgba(0, 255, 102, 0.5); box-shadow: 0 0 15px rgba(0, 255, 102, 0.2); }
+  100% { opacity: 0; transform: translateX(40px); }
+}
+.quest-complete-out {
+  animation: quest-complete-out 0.5s ease-in forwards;
+}
+
+/* --- Phase 4: HP shake --- */
+
+@keyframes hp-shake {
+  0%, 100% { transform: translateX(0); }
+  10% { transform: translateX(-4px); }
+  20% { transform: translateX(4px); }
+  30% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  50% { transform: translateX(-2px); }
+  60% { transform: translateX(2px); }
+  70% { transform: translateX(-1px); }
+  80% { transform: translateX(1px); }
+}
+.hp-shake {
+  animation: hp-shake 0.5s ease-out;
+}
+
+/* --- Phase 4: Level Up overlay --- */
+
+@keyframes level-up-text {
+  0% { opacity: 0; transform: scale(0.5); }
+  30% { opacity: 1; transform: scale(1.1); }
+  50% { transform: scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.05) translateY(-10px); }
+}
+.level-up-text {
+  animation: level-up-text 3s ease-out forwards;
+}
+
+@keyframes confetti-burst {
+  0% { opacity: 1; transform: translate(0, 0) scale(1) rotate(0deg); }
+  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(0.3) rotate(720deg); }
+}
+.confetti-particle {
+  animation: confetti-burst 1.8s ease-out forwards;
+}
+
+/* --- Phase 2: Streak pulse --- */
+
+@keyframes streak-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.5) drop-shadow(0 0 6px rgba(255, 215, 0, 0.6)); }
+}
+.streak-pulse {
+  animation: streak-pulse 2s ease-in-out infinite;
+}
+
+/* --- Achievement popup --- */
+@keyframes achievementEnter {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* --- Page transitions --- */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: page-enter 0.2s ease-out; }
+
+/* --- Card stagger entrance --- */
+@keyframes card-stagger-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.card-stagger { animation: card-stagger-in 0.3s ease-out both; }
+
+/* --- Floating reward numbers --- */
+@keyframes float-reward {
+  0% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  50% { opacity: 1; transform: translate(-50%, -30px) scale(1.1); }
+  100% { opacity: 0; transform: translate(-50%, -60px) scale(0.8); }
+}
+.float-reward { animation: float-reward 1.2s ease-out forwards; }
+
+/* --- Gold coin spin --- */
+@keyframes coin-spin {
+  0% { transform: rotateY(0deg); }
+  100% { transform: rotateY(360deg); }
+}
+.coin-spin { animation: coin-spin 0.6s ease-in-out; }
+
+/* --- Combo pulse --- */
+@keyframes combo-pulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.4); }
+  50% { transform: scale(1.03); box-shadow: 0 0 20px 4px rgba(255, 215, 0, 0.2); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+}
+.combo-pulse { animation: combo-pulse 0.5s ease-out; }
+
+/* --- Shimmer effect for loading / special items --- */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, transparent 30%, rgba(255,255,255,0.04) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+/* --- Glow breathe for active items --- */
+@keyframes glow-breathe {
+  0%, 100% { box-shadow: 0 0 8px rgba(0, 229, 255, 0.15); }
+  50% { box-shadow: 0 0 20px rgba(0, 229, 255, 0.3); }
+}
+.glow-breathe { animation: glow-breathe 3s ease-in-out infinite; }
+
+/* --- Boss entrance --- */
+@keyframes boss-entrance {
+  0% { opacity: 0; transform: scale(0.8) translateY(20px); filter: brightness(2); }
+  40% { opacity: 1; transform: scale(1.05) translateY(-5px); }
+  100% { transform: scale(1) translateY(0); filter: brightness(1); }
+}
+.boss-entrance { animation: boss-entrance 0.5s ease-out; }
+
+/* --- XP bar fill --- */
+@keyframes xp-bar-fill {
+  from { width: var(--xp-from, 0%); }
+  to { width: var(--xp-to, 0%); }
+}
+.xp-bar-fill { animation: xp-bar-fill 0.8s ease-out forwards; }
+
+/* --- Ripple on click --- */
+@keyframes ripple {
+  0% { transform: scale(0); opacity: 0.5; }
+  100% { transform: scale(4); opacity: 0; }
+}
+
+/* --- Bounty glow --- */
+@keyframes bounty-glow {
+  0%, 100% { box-shadow: 0 0 6px rgba(255, 215, 0, 0.15); }
+  50% { box-shadow: 0 0 16px rgba(255, 215, 0, 0.35); }
+}
+.bounty-glow { animation: bounty-glow 2.5s ease-in-out infinite; }
+
+/* --- Achievement unlock flash --- */
+@keyframes achievement-flash {
+  0% { opacity: 0; transform: translateY(-20px) scale(0.8); }
+  15% { opacity: 1; transform: translateY(0) scale(1.05); }
+  25% { transform: scale(1); }
+  85% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-10px); }
+}
+.achievement-flash { animation: achievement-flash 4s ease-out forwards; }
+
+/* --- Damage number float --- */
+@keyframes damage-float {
+  0% { opacity: 1; transform: translateY(0) scale(1.2); }
+  30% { transform: translateY(-15px) scale(1); }
+  100% { opacity: 0; transform: translateY(-40px) scale(0.8); }
+}
+.damage-float { animation: damage-float 1s ease-out forwards; }
+
+/* --- Subtle particle ambient --- */
+@keyframes ambient-drift {
+  0% { transform: translate(0, 0); opacity: 0; }
+  20% { opacity: 0.6; }
+  80% { opacity: 0.6; }
+  100% { transform: translate(var(--dx, 50px), var(--dy, -80px)); opacity: 0; }
+}
+.ambient-particle { animation: ambient-drift var(--dur, 6s) ease-in-out infinite; }
+
+/* --- Chain complete burst --- */
+@keyframes chain-burst {
+  0% { opacity: 1; box-shadow: 0 0 0 0 rgba(176, 38, 255, 0.6); }
+  50% { box-shadow: 0 0 30px 10px rgba(176, 38, 255, 0.3); }
+  100% { opacity: 1; box-shadow: 0 0 0 0 rgba(176, 38, 255, 0); }
+}
+.chain-burst { animation: chain-burst 0.8s ease-out; }
+
+/* --- Scroll fade mask --- */
+.scroll-fade-bottom {
+  mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+}
+
+/* --- Sidebar nav item hover lift --- */
+.nav-lift { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+.nav-lift:hover { transform: translateX(2px); }
+
+/* --- Reduced motion support --- */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
