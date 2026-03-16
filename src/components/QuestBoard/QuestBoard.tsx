@@ -599,16 +599,6 @@ export function QuestBoard() {
               {filteredUnpinned.map((q, i) => (
                 <div
                   key={q.id}
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("text/plain", String(q.id));
-                    e.dataTransfer.effectAllowed = "move";
-                    setDraggedQuestId(q.id);
-                  }}
-                  onDragEnd={() => {
-                    setDraggedQuestId(null);
-                    setDragOverIdx(null);
-                  }}
                   onDragOver={(e) => {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "move";
@@ -619,14 +609,28 @@ export function QuestBoard() {
                   }}
                   onDrop={(e) => handleDrop(e, i)}
                   className={cn(
-                    "card-stagger flex items-center gap-1 group/drag transition-all",
+                    "card-stagger flex items-center gap-1 transition-all",
                     draggedQuestId === q.id && "opacity-30 scale-[0.98]",
                     dragOverIdx === i && draggedQuestId !== q.id && "border-t-2 border-electric-blue"
                   )}
                   style={{ animationDelay: `${i * 0.04}s` }}
                 >
-                  <div className="opacity-0 group-hover/drag:opacity-100 cursor-grab active:cursor-grabbing shrink-0 p-1">
-                    <GripVertical className="w-3.5 h-3.5 text-muted" />
+                  <div
+                    draggable
+                    onDragStart={(e) => {
+                      const row = e.currentTarget.parentElement;
+                      if (row) e.dataTransfer.setDragImage(row, 20, 20);
+                      e.dataTransfer.setData("text/plain", String(q.id));
+                      e.dataTransfer.effectAllowed = "move";
+                      setDraggedQuestId(q.id);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedQuestId(null);
+                      setDragOverIdx(null);
+                    }}
+                    className="cursor-grab active:cursor-grabbing shrink-0 p-1 text-muted hover:text-secondary touch-none"
+                  >
+                    <GripVertical className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <TaskCard quest={q} skillName={q.skillId != null ? skillMap.get(q.skillId)?.name : undefined} />
