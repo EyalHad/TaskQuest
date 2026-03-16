@@ -9,6 +9,20 @@ use models::*;
 use tauri::Manager;
 
 // ═══════════════════════════════════════════════════
+//  DATA MANAGEMENT
+// ═══════════════════════════════════════════════════
+
+#[tauri::command]
+fn check_has_data(state: tauri::State<'_, AppDatabase>) -> Result<bool, String> {
+    state.has_existing_data().map_err(|e| AppError::Database(e).to_string())
+}
+
+#[tauri::command]
+fn reset_all_data(state: tauri::State<'_, AppDatabase>) -> Result<(), String> {
+    state.reset_all_data().map_err(|e| AppError::Database(e).to_string())
+}
+
+// ═══════════════════════════════════════════════════
 //  PROFILES
 // ═══════════════════════════════════════════════════
 
@@ -601,6 +615,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            check_has_data, reset_all_data,
             get_profiles, create_profile, delete_profile, update_profile_theme, update_profile_sound, set_default_skill,
             get_skill_tree, create_skill, delete_skill,
             update_skill, move_skill, archive_skill, unarchive_skill, get_archived_skills, reorder_skills, get_skill_quest_counts,

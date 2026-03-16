@@ -281,7 +281,7 @@ export function QuestChains() {
                     <option value="">Add a quest to this chain...</option>
                     {unchainedQuests.map((q) => (
                       <option key={q.id} value={q.id}>
-                        {q.questName} ({skillMap.get(q.skillId)?.name})
+                        {q.questName} ({q.skillId != null ? skillMap.get(q.skillId)?.name : "No skill"})
                       </option>
                     ))}
                   </select>

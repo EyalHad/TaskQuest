@@ -72,6 +72,13 @@ interface AppStore {
   shortcutHelpOpen: boolean;
   pomodoroDuration: number;
 
+  dataCheckDone: boolean;
+  hasExistingData: boolean;
+
+  checkForExistingData: () => Promise<void>;
+  resetAllData: () => Promise<void>;
+  continueWithExistingData: () => Promise<void>;
+
   init: () => Promise<void>;
   loadProfiles: () => Promise<void>;
   createProfile: (input: CreateProfileInput) => Promise<void>;
@@ -213,6 +220,8 @@ interface AppStore {
 let flyupCounter = 0;
 
 export const useStore = create<AppStore>((set, get) => ({
+  dataCheckDone: false,
+  hasExistingData: false,
   profiles: [], activeProfileId: null,
   skills: [], skillTree: [], quests: [], archivedQuests: [], stats: DEFAULT_GAME_STATS,
   tags: [], templates: [], achievements: [], catalog: [], bundles: [], archivedSkills: [], skillQuestCounts: {}, dailyBounties: [], firstBloodAvailable: true,
@@ -233,6 +242,34 @@ export const useStore = create<AppStore>((set, get) => ({
   colorMode: (localStorage.getItem("taskquest_color_mode") as "light" | "dark")
     || (window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark"),
   showTutorial: false,
+
+  checkForExistingData: async () => {
+    try {
+      const hasData = await invoke<boolean>("check_has_data");
+      if (hasData) {
+        set({ hasExistingData: true });
+      } else {
+        set({ dataCheckDone: true });
+        await get().init();
+      }
+    } catch {
+      set({ dataCheckDone: true });
+      await get().init();
+    }
+  },
+
+  resetAllData: async () => {
+    try {
+      await invoke("reset_all_data");
+    } catch (e) { set({ error: String(e) }); }
+    set({ dataCheckDone: true, hasExistingData: false });
+    await get().init();
+  },
+
+  continueWithExistingData: async () => {
+    set({ dataCheckDone: true, hasExistingData: false });
+    await get().init();
+  },
 
   init: async () => {
     await Promise.all([get().loadProfiles(), get().loadCatalog()]);

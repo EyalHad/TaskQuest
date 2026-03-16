@@ -608,7 +608,7 @@ export function SkillBank() {
         if (!node) return null;
         const leafIds = collectLeafIds(node);
         const skillCount = leafIds.length;
-        const questCount = quests.filter((q) => leafIds.includes(q.skillId)).length;
+        const questCount = quests.filter((q) => q.skillId != null && leafIds.includes(q.skillId)).length;
         const message = `This will remove ${skillCount} skill${skillCount !== 1 ? "s" : ""}${questCount > 0 ? ` and ${questCount} quest${questCount !== 1 ? "s" : ""}` : ""}. This cannot be undone.`;
         return (
           <ConfirmDialog

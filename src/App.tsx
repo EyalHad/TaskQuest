@@ -26,12 +26,17 @@ import { QuickCapture } from "./components/QuestBoard/QuickCapture";
 import { ShortcutHelp } from "./components/Feedback/ShortcutHelp";
 import { UndoToast } from "./components/Feedback/UndoToast";
 import { Tutorial } from "./components/Onboarding/Tutorial";
+import { DataRecoveryDialog } from "./components/Onboarding/DataRecoveryDialog";
 import { SkillDetail } from "./components/SkillTree/SkillDetail";
 import { PageTransition } from "./components/PageTransition";
 import { FloatingRewardProvider } from "./components/Feedback/FloatingReward";
 
 function App() {
-  const init = useStore((s) => s.init);
+  const checkForExistingData = useStore((s) => s.checkForExistingData);
+  const dataCheckDone = useStore((s) => s.dataCheckDone);
+  const hasExistingData = useStore((s) => s.hasExistingData);
+  const resetAllData = useStore((s) => s.resetAllData);
+  const continueWithExistingData = useStore((s) => s.continueWithExistingData);
   const page = useStore((s) => s.page);
   const setPage = useStore((s) => s.setPage);
   const setQuickCapture = useStore((s) => s.setQuickCapture);
@@ -51,8 +56,12 @@ function App() {
   const closeSkillBank = useStore((s) => s.closeSkillBank);
 
   useEffect(() => {
-    init();
-  }, [init]);
+    checkForExistingData();
+  }, [checkForExistingData]);
+
+  if (hasExistingData && !dataCheckDone) {
+    return <DataRecoveryDialog onRestore={continueWithExistingData} onFresh={resetAllData} />;
+  }
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

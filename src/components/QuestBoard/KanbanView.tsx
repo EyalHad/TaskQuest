@@ -73,7 +73,7 @@ export function KanbanView() {
                 className="card-stagger cursor-grab active:cursor-grabbing"
                 style={{ animationDelay: `${i * 0.03}s` }}
               >
-                <TaskCard quest={q} skillName={skillMap.get(q.skillId)?.name} />
+                <TaskCard quest={q} skillName={q.skillId != null ? skillMap.get(q.skillId)?.name : undefined} />
               </div>
             ))}
           </div>

@@ -32,7 +32,7 @@ export function FocusMode() {
 
   const quest = focusQuestId ? quests.find((q) => q.id === focusQuestId) : null;
   const skillMap = new Map(skills.map((s) => [s.id, s]));
-  const skillName = quest ? skillMap.get(quest.skillId)?.name : undefined;
+  const skillName = quest?.skillId != null ? skillMap.get(quest.skillId)?.name : undefined;
 
   const loadSubTasks = useCallback(async () => {
     if (!focusQuestId) return;

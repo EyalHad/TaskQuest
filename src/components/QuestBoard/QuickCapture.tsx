@@ -13,7 +13,7 @@ export function QuickCapture() {
   const [toast, setToast] = useState(false);
   const [toastFading, setToastFading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const toastTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const toastTimeout = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const activeProfile = profiles.find((p) => p.id === activeProfileId);
   const leafSkills = skills.filter((s) => !skills.some((o) => o.parentSkillId === s.id));

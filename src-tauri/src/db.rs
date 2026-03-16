@@ -476,6 +476,42 @@ impl AppDatabase {
     }
 
     // ═══════════════════════════════════════════════════
+    //  DATA MANAGEMENT
+    // ═══════════════════════════════════════════════════
+
+    pub fn has_existing_data(&self) -> Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM profiles WHERE id > 0", [], |r| r.get(0)
+        ).unwrap_or(0);
+        if count == 0 { return Ok(false); }
+        let total_xp: i64 = conn.query_row(
+            "SELECT COALESCE(SUM(total_xp), 0) FROM user_stats", [], |r| r.get(0)
+        ).unwrap_or(0);
+        let quest_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM quests", [], |r| r.get(0)
+        ).unwrap_or(0);
+        let skill_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skills", [], |r| r.get(0)
+        ).unwrap_or(0);
+        Ok(total_xp > 0 || quest_count > 0 || skill_count > 0)
+    }
+
+    pub fn reset_all_data(&self) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("PRAGMA foreign_keys=OFF", [])?;
+        for t in &["template_sub_tasks","quest_templates","quest_tags","tags","sub_tasks",
+                   "achievements","activity_log","purchases","equipped_items","habit_entries",
+                   "habits","journal_entries","daily_challenges","quest_chains","quests","skills","user_stats","profiles"] {
+            let _ = conn.execute_batch(&format!("DELETE FROM {};", t));
+        }
+        conn.execute("PRAGMA foreign_keys=ON", [])?;
+        conn.execute("INSERT INTO profiles (name, avatar_icon) VALUES ('Hero', '⚔️')", [])?;
+        conn.execute("INSERT INTO user_stats (profile_id) VALUES (1)", [])?;
+        Ok(())
+    }
+
+    // ═══════════════════════════════════════════════════
     //  PROFILES
     // ═══════════════════════════════════════════════════
 

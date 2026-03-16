@@ -288,7 +288,7 @@ export function QuestBoard() {
   const quoteCategory = (() => {
     const skillQuestCount = new Map<string, number>();
     for (const q of activeQuests) {
-      const skill = skillMap.get(q.skillId);
+      const skill = q.skillId != null ? skillMap.get(q.skillId) : undefined;
       if (skill) {
         const cat = skill.category;
         skillQuestCount.set(cat, (skillQuestCount.get(cat) ?? 0) + 1);
@@ -563,7 +563,7 @@ export function QuestBoard() {
             <div className="space-y-2">
               {filteredPinned.map((q, i) => (
                 <div key={q.id} className="card-stagger ring-1 ring-electric-blue/40 rounded-xl overflow-hidden" style={{ animationDelay: `${i * 0.04}s` }}>
-                  <TaskCard quest={q} skillName={skillMap.get(q.skillId)?.name} />
+                  <TaskCard quest={q} skillName={q.skillId != null ? skillMap.get(q.skillId)?.name : undefined} />
                 </div>
               ))}
             </div>
@@ -613,7 +613,7 @@ export function QuestBoard() {
                     <GripVertical className="w-3.5 h-3.5 text-muted" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <TaskCard quest={q} skillName={skillMap.get(q.skillId)?.name} />
+                    <TaskCard quest={q} skillName={q.skillId != null ? skillMap.get(q.skillId)?.name : undefined} />
                   </div>
                 </div>
               ))}
