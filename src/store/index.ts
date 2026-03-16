@@ -955,7 +955,7 @@ export const useStore = create<AppStore>((set, get) => ({
       const questId = s.pomodoroQuestId;
       set({ pomodoroSecondsLeft: 0, pomodoroRunning: false, pomodoroQuestId: null });
       playSound("quest_complete");
-      get().completePomodoro(questId);
+      get().completePomodoro(questId).catch(() => {});
     } else {
       set({ pomodoroSecondsLeft: next });
     }

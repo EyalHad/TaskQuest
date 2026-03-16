@@ -25,8 +25,9 @@ export function AddQuestForm({ preselectedSkillId, defaultDueDate }: Props) {
   const [name, setName] = useState("");
   const [questType, setQuestType] = useState<QuestType>("daily");
   const [skillId, setSkillId] = useState<number | null>(preselectedSkillId ?? leafSkills[0]?.id ?? null);
-  const [xpReward, setXpReward] = useState(10);
   const [dueDate, setDueDate] = useState(defaultDueDate ?? "");
+
+  const baseXp = questType === "monthly" ? 50 : questType === "weekly" ? 25 : 10;
   const [expanded, setExpanded] = useState(false);
   const [isRecurring, setIsRecurring] = useState(false);
   const [difficulty, setDifficulty] = useState<Difficulty>("normal");
@@ -41,7 +42,7 @@ export function AddQuestForm({ preselectedSkillId, defaultDueDate }: Props) {
       questName: name.trim(),
       questType,
       skillId: skillId ?? undefined,
-      xpReward,
+      xpReward: baseXp,
       dueDate: dueDate || undefined,
       isRecurring: isRecurring || undefined,
       recurrencePattern: isRecurring ? questType : undefined,
@@ -64,7 +65,7 @@ export function AddQuestForm({ preselectedSkillId, defaultDueDate }: Props) {
       questName: name.trim() || "Untitled Quest",
       questType,
       skillId: skillId ?? undefined,
-      xpReward,
+      xpReward: baseXp,
       difficulty,
       priority,
       isBoss,
@@ -219,14 +220,8 @@ export function AddQuestForm({ preselectedSkillId, defaultDueDate }: Props) {
           onChange={(e) => setDueDate(e.target.value)}
           className="flex-1 bg-panel border border-subtle rounded-lg px-2 py-1 text-sm text-secondary focus:outline-none focus:border-electric-blue/50"
         />
-        <label className="text-xs text-muted">XP:</label>
-        <input
-          type="number"
-          value={xpReward}
-          onChange={(e) => setXpReward(Math.max(1, Number(e.target.value)))}
-          min={1}
-          className="w-14 bg-panel border border-subtle rounded-lg px-2 py-1 text-sm text-emerald-glow focus:outline-none focus:border-electric-blue/50"
-        />
+        <span className="text-xs text-muted">XP:</span>
+        <span className="w-14 text-sm text-emerald-glow tabular-nums text-center">{baseXp}</span>
       </div>
 
       <div className="flex items-center justify-between">

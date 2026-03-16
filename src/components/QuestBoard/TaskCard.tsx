@@ -190,7 +190,9 @@ export function TaskCard({ quest, skillName }: Props) {
         : "text-emerald-glow border-emerald-glow/30 bg-emerald-glow/10";
 
   const effectiveXp = (() => {
-    let xp = xpBoost > 0 ? quest.xpReward * 2 : quest.xpReward;
+    const diffMult = quest.difficulty === "epic" ? 3.0 : quest.difficulty === "hard" ? 1.5 : 1.0;
+    let xp = Math.round(quest.xpReward * diffMult);
+    if (xpBoost > 0) xp *= 2;
     if (isBurnout) xp = Math.round(xp * 0.5);
     return xp;
   })();

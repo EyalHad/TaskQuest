@@ -776,8 +776,9 @@ impl AppDatabase {
         Self::query_quests(&conn, &format!("SELECT {} FROM quests WHERE profile_id=?1 AND is_archived=1 ORDER BY completed_at DESC", Self::QC), params![profile_id])
     }
 
-    pub fn create_quest(&self, profile_id: i64, name: &str, desc: &str, qtype: &str, skill_id: Option<i64>, xp: i64, due: Option<&str>, recurring: bool, pattern: Option<&str>, difficulty: &str, priority: &str, is_boss: bool, estimated_minutes: Option<i64>) -> Result<QuestRow> {
+    pub fn create_quest(&self, profile_id: i64, name: &str, desc: &str, qtype: &str, skill_id: Option<i64>, _xp: i64, due: Option<&str>, recurring: bool, pattern: Option<&str>, difficulty: &str, priority: &str, is_boss: bool, estimated_minutes: Option<i64>) -> Result<QuestRow> {
         let conn = self.conn.lock().unwrap();
+        let xp = Self::base_xp_for_quest_type(qtype);
         conn.execute("INSERT INTO quests (profile_id,quest_name,description,quest_type,skill_id,xp_reward,due_date,is_recurring,recurrence_pattern,difficulty,priority,is_boss,estimated_minutes) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
             params![profile_id,name,desc,qtype,skill_id,xp,due,recurring as i32,pattern,difficulty,priority,is_boss as i32,estimated_minutes])?;
         let id = conn.last_insert_rowid();
@@ -819,6 +820,10 @@ impl AppDatabase {
             conn.execute("UPDATE quests SET sort_order=?1 WHERE id=?2", params![i as i64, id])?;
         }
         Ok(())
+    }
+
+    fn base_xp_for_quest_type(quest_type: &str) -> i64 {
+        match quest_type { "weekly" => 25, "monthly" => 50, _ => 10 }
     }
 
     fn difficulty_xp_mult(difficulty: &str) -> f64 {
@@ -890,7 +895,8 @@ impl AppDatabase {
             xp = (xp as f64 * equip_xp_mult).round() as i64;
             xp
         } else {
-            -xp_reward
+            let diff_mult = Self::difficulty_xp_mult(&difficulty);
+            -((xp_reward as f64 * diff_mult).round() as i64)
         };
 
         // 4. Calculate gold
@@ -1488,8 +1494,9 @@ impl AppDatabase {
             params![profile_id], |r| Ok((r.get(0)?, r.get(1)?))).ok();
         if let Some((sid, sname)) = weakest_skill {
             let boss_name = format!("Weekly Boss: Master {}", sname);
-            conn.execute("INSERT INTO quests (profile_id,quest_name,description,quest_type,skill_id,xp_reward,difficulty,priority,is_boss) VALUES (?1,?2,'Defeat this weekly boss for 3× rewards!','weekly',?3,30,'epic','urgent',1)",
-                params![profile_id, boss_name, sid])?;
+            let boss_xp = Self::base_xp_for_quest_type("weekly");
+            conn.execute("INSERT INTO quests (profile_id,quest_name,description,quest_type,skill_id,xp_reward,difficulty,priority,is_boss) VALUES (?1,?2,'Defeat this weekly boss for 3× rewards!','weekly',?3,?4,'epic','urgent',1)",
+                params![profile_id, boss_name, sid, boss_xp])?;
             let new_id = conn.last_insert_rowid();
             conn.execute("UPDATE user_stats SET weekly_boss_quest_id=?1, weekly_boss_date=?2 WHERE profile_id=?3", params![new_id, today, profile_id])?;
             Ok(Some(new_id))
@@ -1578,8 +1585,9 @@ impl AppDatabase {
                         let existing: i64 = conn.query_row("SELECT COUNT(*) FROM quests WHERE profile_id=?1 AND quest_name=?2 AND completed=0 AND failed=0 AND DATE(created_at)=date(?3)",
                             params![profile_id, qname, today], |r| r.get(0))?;
                         if existing == 0 {
+                            let sched_xp = Self::base_xp_for_quest_type("daily");
                             conn.execute("INSERT INTO quests (profile_id,quest_name,description,quest_type,skill_id,xp_reward,difficulty,priority,is_boss) VALUES (?1,?2,?3,'daily',?4,?5,?6,?7,?8)",
-                                params![profile_id, qname, desc, sid, xp, diff, pri, *boss as i32])?;
+                                params![profile_id, qname, desc, sid, sched_xp, diff, pri, *boss as i32])?;
                         }
                     }
                 }
@@ -1748,8 +1756,9 @@ impl AppDatabase {
             None => conn.query_row(
                 "SELECT default_skill_id FROM profiles WHERE id=?1", params![profile_id], |r| r.get(0))?,
         };
+        let tmpl_xp = Self::base_xp_for_quest_type(&t.quest_type);
         conn.execute("INSERT INTO quests (profile_id,quest_name,description,quest_type,skill_id,xp_reward,difficulty,priority,is_boss) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-            params![profile_id,t.quest_name,t.description,t.quest_type,skill_id,t.xp_reward,t.difficulty,t.priority,t.is_boss as i32])?;
+            params![profile_id,t.quest_name,t.description,t.quest_type,skill_id,tmpl_xp,t.difficulty,t.priority,t.is_boss as i32])?;
         let qid = conn.last_insert_rowid();
         let mut stmt = conn.prepare("SELECT title,sort_order FROM template_sub_tasks WHERE template_id=?1 ORDER BY sort_order")?;
         let subs: Vec<(String,i64)> = stmt.query_map(params![template_id], |r| Ok((r.get(0)?,r.get(1)?)))?.collect::<Result<Vec<_>,_>>()?;
@@ -1863,8 +1872,9 @@ impl AppDatabase {
             if should {
                 let existing: i64 = conn.query_row("SELECT COUNT(*) FROM quests WHERE parent_quest_id=?1 AND completed=0 AND failed=0", params![q.id], |r| r.get(0))?;
                 if existing == 0 {
+                    let recur_xp = Self::base_xp_for_quest_type(&q.quest_type);
                     conn.execute("INSERT INTO quests (profile_id,quest_name,description,quest_type,skill_id,xp_reward,is_recurring,recurrence_pattern,parent_quest_id,difficulty,priority,is_boss) VALUES (?1,?2,?3,?4,?5,?6,1,?7,?8,?9,?10,?11)",
-                        params![profile_id,q.quest_name,q.description,q.quest_type,q.skill_id,q.xp_reward,q.recurrence_pattern,q.id,q.difficulty,q.priority,q.is_boss as i32])?;
+                        params![profile_id,q.quest_name,q.description,q.quest_type,q.skill_id,recur_xp,q.recurrence_pattern,q.id,q.difficulty,q.priority,q.is_boss as i32])?;
                 }
             }
         }
